@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Кейс Баттл</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        :root {
+            --bg: #0a0a0a;
+            --panel: #1a1a1a;
+            --accent: #ffcc00;
+            --text: #ffffff;
+            --text-muted: #888;
+            --border: #333;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+        body { background: var(--bg); color: var(--text); padding-bottom: 70px; overflow-x: hidden; }
+        
+        /* Вкладки */
+        .tab-content { display: none; padding: 15px; animation: fadeIn 0.3s; }
+        .tab-content.active { display: block; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+        /* Нижнее меню */
+        .bottom-nav {
+            position: fixed; bottom: 0; left: 0; right: 0; height: 60px;
+            background: var(--panel); border-top: 1px solid var(--border);
+            display: flex; justify-content: space-around; align-items: center; z-index: 100;
+        }
+        .nav-item {
+            color: var(--text-muted); font-size: 24px; cursor: pointer;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            width: 20%; height: 100%; transition: 0.2s;
+        }
+        .nav-item.active { color: var(--accent); transform: translateY(-3px); }
+        .nav-text { font-size: 10px; margin-top: 2px; font-weight: bold; }
+
+        /* Карточки кейсов */
+        .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+        .case-card {
+            background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+            padding: 15px; text-align: center; cursor: pointer; transition: 0.2s;
+        }
+        .case-card:active { transform: scale(0.95); border-color: var(--accent); }
+        .case-icon { font-size: 40px; margin-bottom: 10px; }
+        .case-name { font-size: 14px; font-weight: bold; margin-bottom: 5px; }
+        .case-price { font-size: 12px; color: var(--accent); font-weight: bold; }
+
+        /* Профиль */
+        .profile-header { text-align: center; margin-bottom: 20px; }
+        .avatar { width: 80px; height: 80px; border-radius: 50%; background: var(--accent); margin: 0 auto 10px; display: flex; align-items: center; justify-content: center; font-size: 40px; color: #000; }
+        .balance-box { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 15px; margin-bottom: 15px; text-align: center; }
+        .balance-title { font-size: 12px; color: var(--text-muted); }
+        .balance-amount { font-size: 28px; font-weight: bold; color: var(--accent); margin: 5px 0; }
+        .promo-input { width: 100%; padding: 12px; background: #000; border: 1px solid var(--border); border-radius: 8px; color: #fff; margin-bottom: 10px; outline: none; }
+        .btn { background: var(--accent); color: #000; border: none; padding: 12px; border-radius: 8px; font-weight: bold; width: 100%; cursor: pointer; font-size: 16px; }
+        .btn:active { opacity: 0.8; }
+
+        /* Инвентарь */
+        .inv-item { display: flex; align-items: center; justify-content: space-between; background: var(--panel); border: 1px solid var(--border); padding: 12px; border-radius: 8px; margin-bottom: 10px; }
+        .inv-info { display: flex; flex-direction: column; }
+        .inv-name { font-weight: bold; font-size: 14px; }
+        .inv-rarity { font-size: 11px; margin-top: 2px; }
+        .btn-sell { background: #333; color: #fff; border: none; padding: 8px 12px; border-radius: 6px; font-weight: bold; cursor: pointer; }
+
+        /* Экран открытия кейса */
+        #open-screen { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); z-index: 200; display: none; flex-direction: column; justify-content: center; align-items: center; }
+        .roulette-container { width: 100%; height: 120px; background: #000; position: relative; overflow: hidden; border-top: 2px solid var(--accent); border-bottom: 2px solid var(--accent); }
+        .roulette-track { display: flex; position: absolute; top: 10px; left: 0; transition: transform 4s cubic-bezier(0.1, 0.7, 0.1, 1); }
+        .roulette-item { width: 100px; height: 100px; flex-shrink: 0; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; margin: 0 5px; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+        .marker { position: absolute; top: 0; left: 50%; transform: translateX(-50%); width: 4px; height: 100%; background: var(--accent); z-index: 10; box-shadow: 0 0 10px var(--accent); }
+        
+        /* Админка */
+        #admin-tab { display: none; }
+        .admin-section { background: var(--panel); padding: 15px; border-radius: 12px; margin-bottom: 15px; border: 1px solid var(--accent); }
+        select { width: 100%; padding: 12px; background: #000; border: 1px solid var(--border); border-radius: 8px; color: #fff; margin-bottom: 10px; outline: none; }
+    </style>
+</head>
+<body>
+
+    <!-- Главная -->
+    <div id="tab-home" class="tab-content active">
+        <h2 style="margin-bottom: 15px;">Все кейсы</h2>
+        <div class="grid" id="home-cases"></div>
+    </div>
+
+    <!-- Кейсы (по категориям) -->
+    <div id="tab-cases" class="tab-content">
+        <h2 style="margin-bottom: 15px;">Категории</h2>
+        <div class="grid" id="all-cases"></div>
+    </div>
+
+    <!-- Инвентарь -->
+    <div id="tab-inventory" class="tab-content">
+        <h2 style="margin-bottom: 15px;">Твой Инвентарь</h2>
+        <div id="inventory-list"></div>
+    </div>
+
+    <!-- Профиль -->
+    <div id="tab-profile" class="tab-content">
+        <div class="profile-header">
+            <div class="avatar" id="user-avatar">👤</div>
+            <h3 id="user-name">Загрузка...</h3>
+        </div>
+        <div class="balance-box">
+            <div class="balance-title">Твой баланс</div>
+            <div class="balance-amount"><span id="balance">0</span> 🫙</div>
+        </div>
+        <h3 style="margin-bottom: 10px;">Промокод</h3>
+        <input type="text" id="promo-input" class="promo-input" placeholder="Введи код...">
+        <button class="btn" onclick="activatePromo()">Активировать</button>
+    </div>
+
+    <!-- Админка (скрыта для всех) -->
+    <div id="tab-admin" class="tab-content">
+        <h2 style="margin-bottom: 15px;">Админка</h2>
+        <div class="admin-section">
+            <h3>Выдать Жир</h3>
+            <input type="number" id="admin-cash" class="promo-input" placeholder="Сумма..." style="margin-top:10px;">
+            <button class="btn" onclick="adminGiveCash()">Начислить</button>
+        </div>
+        <div class="admin-section">
+            <h3>Выдать Предмет</h3>
+            <select id="admin-item-select" style="margin-top:10px;"></select>
+            <button class="btn" onclick="adminGiveItem()">Добавить</button>
+        </div>
+    </div>
+
+    <!-- Экран открытия -->
+    <div id="open-screen">
+        <h2 id="open-title" style="margin-bottom: 20px;">Открываем...</h2>
+        <div class="roulette-container">
+            <div class="marker"></div>
+            <div class="roulette-track" id="roulette-track"></div>
+        </div>
+        <div id="open-result" style="margin-top: 30px; text-align: center; display: none;">
+            <h1 id="result-name" style="font-size: 24px; margin-bottom: 5px;"></h1>
+            <p id="result-rarity" style="font-size: 16px; margin-bottom: 20px;"></p>
+            <button class="btn" style="margin-bottom: 10px;" onclick="closeOpenScreen()">Ещё раз</button>
+            <button class="btn" style="background: #333; color: #fff;" onclick="saveItem()">Сохранить в инвентарь</button>
+        </div>
+    </div>
+
+    <!-- Нижнее меню -->
+    <div class="bottom-nav">
+        <div class="nav-item active" onclick="switchTab('home', this)"><span>🏠</span><span class="nav-text">Главная</span></div>
+        <div class="nav-item" onclick="switchTab('cases', this)"><span>📦</span><span class="nav-text">Кейсы</span></div>
+        <div class="nav-item" onclick="switchTab('inventory', this)"><span>🎒</span><span class="nav-text">Инвентарь</span></div>
+        <div class="nav-item" onclick="switchTab('profile', this)"><span>👤</span><span class="nav-text">Профиль</span></div>
+        <div class="nav-item" id="admin-nav-btn" onclick="switchTab('admin', this)" style="display:none;"><span>🛠</span><span class="nav-text">Админ</span></div>
+    </div>
+
+    <script>
+        // --- ИНИЦИАЛИЗАЦИЯ ДАННЫХ ---
+        const tg = window.Telegram.WebApp;
+        tg.expand(); // Развернуть на весь экран
+
+        const MY_USERNAME = "UgolovnyyDepartament"; // Твой юзернейм
+
+        const RARITY = {
+            'common': { name: 'Обычная', color: '#888' },
+            'rare': { name: 'Редкая', color: '#3b82f6' },
+            'epic': { name: 'Эпическая', color: '#a855f7' },
+            'mythic': { name: 'Мифическая', color: '#ef4444' },
+            'legend': { name: 'Легендарная', color: '#fbbf24' },
+            'ultra': { name: 'Ультра Легенда', color: '#f59e0b' },
+            'ultra_ultra': { name: 'Ультра Ультра Легенда', color: '#fff' } // Белое свечение
+        };
+
+        const CASES = [
+            { id: 'school', name: 'Школьная жизнь', icon: '🏫', price: 150, items: [
+                { name: 'Храмов', rarity: 'common', price: 50 },
+                { name: 'Елецкая', rarity: 'common', price: 50 },
+                { name: 'Психологичка', rarity: 'rare', price: 150 },
+                { name: 'Деревященко', rarity: 'epic', price: 400 },
+                { name: 'Славик', rarity: 'mythic', price: 800 },
+                { name: 'Жировая Верка', rarity: 'legend', price: 1500 },
+                { name: 'Н2', rarity: 'legend', price: 1500 },
+                { name: 'Толик Физика', rarity: 'ultra', price: 5000 }
+            ]},
+            { id: 'memories', name: 'Воспоминания', icon: '🍻', price: 150, items: [
+                { name: 'Пьяный Коля', rarity: 'common', price: 40 },
+                { name: 'Пьяный Митя', rarity: 'epic', price: 200 },
+                { name: 'Пьяный Писарь', rarity: 'legend', price: 500 },
+                { name: 'Антон Цугун', rarity: 'mythic', price: 800 },
+                { name: 'Майонезное побоище', rarity: 'legend', price: 500 },
+                { name: 'Подъезд 3 и 8', rarity: 'ultra', price: 2000 },
+                { name: 'Майонезное окно', rarity: 'ultra_ultra', price: 10000 }
+            ]},
+            { id: 'meme', name: 'Мемный', icon: '🃏', price: 200, items: [
+                { name: 'Смешной кот', rarity: 'common', price: 30 },
+                { name: 'Доге', rarity: 'common', price: 30 },
+                { name: 'Тролльфейс', rarity: 'rare', price: 100 },
+                { name: 'Скайп-баба', rarity: 'epic', price: 300 },
+                { name: 'Шрек', rarity: 'legend', price: 1000 },
+                { name: 'Хаги Ваги', rarity: 'mythic', price: 500 },
+                { name: 'Голубь-кикбоксер', rarity: 'ultra', price: 3000 }
+            ]},
+            { id: 'garage', name: 'Гаражный', icon: '🚗', price: 300, items: [
+                { name: 'Ржавый велик', rarity: 'common', price: 50 },
+                { name: 'Покрышка', rarity: 'common', price: 50 },
+                { name: 'Баллон с краской', rarity: 'rare', price: 150 },
+                { name: 'Магнитола', rarity: 'epic', price: 400 },
+                { name: 'Папина «шестёрка»', rarity: 'legend', price: 1500 },
+                { name: 'Турбина от КамАЗа', rarity: 'mythic', price: 800 },
+                { name: 'Двигатель от вертолёта', rarity: 'ultra_ultra', price: 8000 }
+            ]},
+            { id: 'dota', name: 'Дота-катка', icon: '⚔️', price: 250, items: [
+                { name: 'Вард', rarity: 'common', price: 30 },
+                { name: 'Танго', rarity: 'common', price: 30 },
+                { name: 'Кринж-тиммейт', rarity: 'rare', price: 120 },
+                { name: 'Руина в мид', rarity: 'epic', price: 350 },
+                { name: '«Я не фидер, я танк»', rarity: 'mythic', price: 700 },
+                { name: 'Рампага на 5', rarity: 'legend', price: 1200 },
+                { name: 'Рампага на 5 от врагов', rarity: 'ultra_ultra', price: 7000 }
+            ]},
+            { id: 'breakfast', name: 'Завтрак чемпиона', icon: '🍜', price: 100, items: [
+                { name: 'Бутер с маслом', rarity: 'common', price: 20 },
+                { name: 'Кофе на палочке', rarity: 'common', price: 20 },
+                { name: 'Чипсы на завтрак', rarity: 'rare', price: 80 },
+                { name: 'Доширак', rarity: 'epic', price: 200 },
+                { name: 'Пельмени из микроволновки', rarity: 'legend', price: 600 },
+                { name: 'Мамин борщ', rarity: 'mythic', price: 400 },
+                { name: 'Шаурма в 3 ночи', rarity: 'ultra_ultra', price: 5000 }
+            ]},
+            { id: 'toxic', name: 'Токсичный', icon: '💀', price: 400, items: [
+                { name: '«А че так»', rarity: 'common', price: 60 },
+                { name: '«Смешно, дизлайк»', rarity: 'common', price: 60 },
+                { name: 'Мут на 10 минут', rarity: 'rare', price: 200 },
+                { name: 'Пассивная агрессия', rarity: 'epic', price: 500 },
+                { name: '«Ты кто такой вообще»', rarity: 'mythic', price: 900 },
+                { name: 'Кринж-аргумент', rarity: 'legend', price: 1800 },
+                { name: 'Бан навсегда', rarity: 'ultra_ultra', price: 10000 }
+            ]},
+            { id: 'anime', name: 'Анимешный', icon: '🌸', price: 350, items: [
+                { name: 'Тян 2D', rarity: 'common', price: 50 },
+                { name: 'Косплей-очки', rarity: 'common', price: 50 },
+                { name: 'Футболка с Наруто', rarity: 'rare', price: 180 },
+                { name: 'Фигурка', rarity: 'epic', price: 450 },
+                { name: 'Вайфу', rarity: 'legend', price: 1600 },
+                { name: '«Они не понимают, что 2D лучше»', rarity: 'mythic', price: 850 },
+                { name: 'Полка с мангой на всю стену', rarity: 'ultra_ultra', price: 9000 }
+            ]}
+        ];
+
+        const PROMOS = {
+            "Артем228": 50000,
+            "Писарь228": 50000,
+            "Митяй2281488": 75000,
+            "Коля228": 25000,
+            "Кирилл1488": 100000
+        };
+
+        // --- ЛОГИКА ПРИЛОЖЕНИЯ ---
+        let state = {
+            balance: 5000,
+            inventory: [],
+            usedPromos: [],
+            casesOpened: 0
+        };
+
+        let currentOpenCase = null;
+        let currentDrop = null;
+
+        // Загрузка из LocalStorage
+        function loadState() {
+            const saved = localStorage.getItem('caseBattleState');
+            if (saved) {
+                state = JSON.parse(saved);
+            } else {
+                saveState(); // Сохраняем стартовые 5000
+            }
+            updateUI();
+        }
+
+        function saveState() {
+            localStorage.setItem('caseBattleState', JSON.stringify(state));
+        }
+
+        function updateUI() {
+            document.getElementById('balance').innerText = state.balance;
+            
+            // Отрисовка инвентаря
+            const invList = document.getElementById('inventory-list');
+            invList.innerHTML = '';
+            if (state.inventory.length === 0) {
+                invList.innerHTML = '<p style="color:#888; text-align:center;">Пока пусто. Открывай кейсы!</p>';
+            } else {
+                state.inventory.forEach((item, index) => {
+                    const r = RARITY[item.rarity];
+                    invList.innerHTML += `
+                        <div class="inv-item">
+                            <div class="inv-info">
+                                <span class="inv-name">${item.name}</span>
+                                <span class="inv-rarity" style="color: ${r.color}">${r.name}</span>
+                            </div>
+                            <button class="btn-sell" onclick="sellItem(${index})">Продать (${item.price} 🫙)</button>
+                        </div>
+                    `;
+                });
+            }
+        }
+
+        // Отрисовка кейсов
+        function renderCases() {
+            const html = CASES.map(c => `
+                <div class="case-card" onclick="startOpen('${c.id}')">
+                    <div class="case-icon">${c.icon}</div>
+                    <div class="case-name">${c.name}</div>
+                    <div class="case-price">${c.price} 🫙</div>
+                </div>
+            `).join('');
+            document.getElementById('home-cases').innerHTML = html;
+            document.getElementById('all-cases').innerHTML = html;
+        }
+
+        // Переключение вкладок
+        function switchTab(tabId, el) {
+            document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+            document.getElementById('tab-' + tabId).classList.add('active');
+            el.classList.add('active');
+        }
+
+        // Инициализация пользователя Telegram
+        function initUser() {
+            if (tg.initDataUnsafe && tg.initDataUnsafe.user) {
+                const user = tg.initDataUnsafe.user;
+                document.getElementById('user-name').innerText = user.first_name || user.username || 'Игрок';
+                
+                // Проверка на админа
+                if (user.username === MY_USERNAME) {
+                    document.getElementById('admin-nav-btn').style.display = 'flex';
+                    document.getElementById('tab-admin').style.display = 'block'; // Разрешаем показ
+                    // Заполняем список предметов для админки
+                    const select = document.getElementById('admin-item-select');
+                    CASES.forEach(c => {
+                        c.items.forEach(i => {
+                            select.innerHTML += `<option value="${c.id}|${i.name}">${i.name} (${c.name})</option>`;
+                        });
+                    });
+                }
+            } else {
+                document.getElementById('user-name').innerText = 'Тестер';
+            }
+        }
+
+        // --- ОТКРЫТИЕ КЕЙСА ---
+        function startOpen(caseId) {
+            const box = CASES.find(c => c.id === caseId);
+            if (state.balance < box.price) {
+                tg.showAlert("Недостаточно Жира! 🫙");
+                return;
+            }
+            state.balance -= box.price;
+            saveState();
+            updateUI();
+            
+            currentOpenCase = box;
+            
+            // Выбираем случайный предмет (взвешенный рандом)
+            const roll = Math.random() * 100;
+            let selectedItem = box.items[0];
+            
+            // Простая система шансов (чем выше редкость, тем меньше шанс)
+            const weights = {
+                'common': 50, 'rare': 25, 'epic': 15, 'mythic': 6, 'legend': 3, 'ultra': 0.8, 'ultra_ultra': 0.2
+            };
+            
+            let sum = 0;
+            let rRoll = Math.random() * 100;
+            for (let item of box.items) {
+                sum += weights[item.rarity];
+                if (rRoll <= sum) {
+                    selectedItem = item;
+                    break;
+                }
+            }
+            currentDrop = selectedItem;
+
+            // Запускаем анимацию
+            const screen = document.getElementById('open-screen');
+            const track = document.getElementById('roulette-track');
+            const resultDiv = document.getElementById('open-result');
+            
+            screen.style.display = 'flex';
+            resultDiv.style.display = 'none';
+            document.getElementById('open-title').innerText = "Крутим...";
+            
+            // Генерируем 50 карточек для рулетки (выигрыш ставим на 45-ю позицию)
+            let trackHTML = '';
+            for (let i = 0; i < 50; i++) {
+                let rItem = box.items[Math.floor(Math.random() * box.items.length)];
+                if (i === 45) rItem = selectedItem; // Подставляем выигрыш
+                
+                const rColor = RARITY[rItem.rarity].color;
+                trackHTML += `
+                    <div class="roulette-item" style="border-color: ${rColor}; box-shadow: inset 0 0 10px ${rColor}40;">
+                        <div style="font-size: 10px; text-align: center; padding: 5px; word-break: break-word;">${rItem.name}</div>
+                    </div>
+                `;
+            }
+            track.innerHTML = trackHTML;
+            track.style.transition = 'none';
+            track.style.transform = 'translateX(0)';
+            
+            // Форсируем рефлоу и запускаем анимацию
+            setTimeout(() => {
+                track.style.transition = 'transform 4s cubic-bezier(0.1, 0.7, 0.1, 1)';
+                // Сдвигаем так, чтобы 45-й элемент (индекс 45) оказался по центру
+                // Каждый элемент = 110px (100px + 10px margin)
+                const offset = (45 * 110) - (window.innerWidth / 2) + 50; 
+                track.style.transform = `translateX(-${offset}px)`;
+            }, 50);
+
+            // Показываем результат после анимации
+            setTimeout(() => {
+                document.getElementById('open-title').innerText = "Твой дроп:";
+                resultDiv.style.display = 'block';
+                document.getElementById('result-name').innerText = selectedItem.name;
+                const rar = RARITY[selectedItem.rarity];
+                const rarEl = document.getElementById('result-rarity');
+                rarEl.innerText = rar.name;
+                rarEl.style.color = rar.color;
+                rarEl.style.textShadow = `0 0 10px ${rar.color}`;
+            }, 4200);
+        }
+
+        function closeOpenScreen() {
+            document.getElementById('open-screen').style.display = 'none';
+            startOpen(currentOpenCase.id); // Сразу запускаем еще раз
+        }
+
+        function saveItem() {
+            state.inventory.push(currentDrop);
+            state.casesOpened++;
+            saveState();
+            updateUI();
+            document.getElementById('open-screen').style.display = 'none';
+            tg.showAlert(`Предмет ${currentDrop.name} добавлен в инвентарь!`);
+            switchTab('inventory', document.querySelectorAll('.nav-item')[2]); // Перекидываем во вкладку инвентаря
+        }
+
+        function sellItem(index) {
+            const item = state.inventory[index];
+            state.balance += item.price;
+            state.inventory.splice(index, 1);
+            saveState();
+            updateUI();
+            tg.showAlert(`Продан ${item.name} за ${item.price} 🫙`);
+        }
+
+        // --- ПРОМОКОДЫ ---
+        function activatePromo() {
+            const input = document.getElementById('promo-input').value.trim();
+            if (!input) return;
+
+            if (state.usedPromos.includes(input)) {
+                tg.showAlert("Этот промокод уже использован!");
+                return;
+            }
+
+            if (PROMOS[input]) {
+                state.balance += PROMOS[input];
+                state.usedPromos.push(input);
+                saveState();
+                updateUI();
+                document.getElementById('promo-input').value = '';
+                tg.showAlert(`Успешно! Начислено ${PROMOS[input]} 🫙`);
+            } else {
+                tg.showAlert("Неверный промокод!");
+            }
+        }
+
+        // --- АДМИНКА ---
+        function adminGiveCash() {
+            const amount = parseInt(document.getElementById('admin-cash').value);
+            if (amount > 0) {
+                state.balance += amount;
+                saveState();
+                updateUI();
+                tg.showAlert(`Начислено ${amount} 🫙`);
+                document.getElementById('admin-cash').value = '';
+            }
+        }
+
+        function adminGiveItem() {
+            const val = document.getElementById('admin-item-select').value;
+            if (!val) return;
+            const [caseId, itemName] = val.split('|');
+            const box = CASES.find(c => c.id === caseId);
+            const item = box.items.find(i => i.name === itemName);
+            
+            if (item) {
+                state.inventory.push(item);
+                saveState();
+                updateUI();
+                tg.showAlert(`Предмет ${item.name} добавлен!`);
+            }
+        }
+
+        // --- СТАРТ ---
+        window.onload = () => {
+            loadState();
+            renderCases();
+            initUser();
+            tg.ready();
+        };
+    </script>
+</body>
+</html>
